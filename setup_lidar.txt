@@ -1,3 +1,5 @@
+### FRESH SETUP GUIDE ###
+
 ══════════════════════════════════════════
 PART 1: WHAT TO DOWNLOAD ON YOUR COMPUTER
 ══════════════════════════════════════════ 
@@ -476,3 +478,130 @@ groups
 
 # Test robot_map again
 robot_map
+
+
+
+Find this block in ~/robot/launch/mapping_launch.py (also in ~/ws_lidar/src/sllidar_ros2/launch/mapping_launch.py):
+----------
+# Transform: base_link -> laser (10cm up)
+Node(
+    package='tf2_ros',
+    executable='static_transform_publisher',
+    name='base_to_laser_broadcaster',
+    arguments=['0', '0', '0.1', '0', '0', '0', 'base_link', 'laser']
+),
+# Add a second static transform right after it:
+# Transform: odom -> base_link (required by SLAM Toolbox)
+Node(
+    package='tf2_ros',
+    executable='static_transform_publisher',
+    name='odom_to_base_broadcaster',
+    arguments=['0', '0', '0', '0', '0', '0', 'odom', 'base_link']
+),
+
+On first run, ~/robot/rviz/mapping_config.rviz doesn't exist yet — the organize script creates the folder but never creates this file. So RViz falls back to sllidar_ros2.rviz, which only shows the laser scan, not the map.
+# Fix — Create the RViz config file:
+mkdir -p ~/robot/rviz
+cat > ~/robot/rviz/mapping_config.rviz << 'EOF'
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Displays:
+    - Class: rviz_default_plugins/Map
+      Name: Map
+      Topic:
+        Value: /map
+      Alpha: 0.7
+      Enabled: true
+    - Class: rviz_default_plugins/LaserScan
+      Name: LaserScan
+      Topic:
+        Value: /scan
+      Size (m): 0.03
+      Color: 255; 0; 0
+      Enabled: true
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+  Global Options:
+    Fixed Frame: map
+EOF
+
+The default mapper_params_online_async.yaml requires the robot to move a minimum distance before updating the map. With a static odom (no encoder feedback), it may think the robot hasn't moved.
+# Fix — Override the SLAM Toolbox params. Create a custom params file:
+cat > ~/robot/config/slam_params.yaml << 'EOF'
+slam_toolbox:
+  ros__parameters:
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_link
+    scan_topic: /scan
+    use_map_saver: true
+    mode: mapping
+
+    # Allow map updates without physical odometry movement
+    minimum_travel_distance: 0.0
+    minimum_travel_heading: 0.0
+    map_update_interval: 5.0
+
+    resolution: 0.05
+    max_laser_range: 12.0
+    minimum_time_interval: 0.5
+    transform_timeout: 0.5
+    tf_buffer_duration: 30.0
+EOF
+# Then update the SLAM Toolbox launch call in mapping_launch.py. Replace:
+slam_params_file = os.path.join(
+    slam_toolbox_dir, 'config', 'mapper_params_online_async.yaml'
+)
+# With:
+slam_params_file = os.path.join(os.path.expanduser('~'), 'robot', 'config', 'slam_params.yaml')
+
+
+
+After applying fixes, verify with:
+# In terminal 1 — start mapping
+robot_map
+# In terminal 2 — check TF tree (should show map→odom→base_link→laser)
+ros2 run tf2_tools view_frames
+# In terminal 3 — check map is being published
+ros2 topic hz /map
+# Should show ~0.2 Hz (updates every 5 seconds)
+# In terminal 4 — check scan is working
+robot_scan
+# Should show ~7.5 Hz
+Crtl + C to close the robot_map and run robot_navigate my_lawn
+
+
+
+bash ~/fix_robot_navigation.sh
+nano ~/robot/rviz/navigation_config.rviz
+# Find this:
+Class: nav2_rviz_plugins/Navigation2
+# Change to:
+Class: nav2_rviz_plugins/Navigation 2
+# Save:
+CTRL + X → Y → Enter
+
+robot_navigate my_lawn
+
+# Now that map is working, try again:
+ros2 topic pub -1 /initialpose geometry_msgs/msg/PoseWithCovarianceStamped "{header: {frame_id: 'map'}, pose: {pose: {position: {x: 0.0, y: 0.0, z: 0.0}, orientation: {w: 1.0}}}}"
+
+# OR better:
+# Use RViz:
+Click 2D Pose Estimate
+
+# TEMP FIX (test only)
+# Run:
+ros2 topic pub /odom nav_msgs/msg/Odometry "{header: {frame_id: 'odom'}, child_frame_id: 'base_link'}"
+# BETTER FIX (recommended)
+# In your system:
+# Replace static TF with fake odometry node
+# OR integrate odometry into your motor controller
