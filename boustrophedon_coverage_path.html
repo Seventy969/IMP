@@ -1,0 +1,288 @@
+
+<style>
+  .ctrl { display:flex; align-items:center; gap:10px; margin:0 0 10px; font-size:13px; color:var(--color-text-secondary); flex-wrap:wrap; }
+  button { font-size:12px; padding:4px 12px; }
+  #info { font-size:12px; color:var(--color-text-secondary); margin-top:6px; min-height:18px; }
+</style>
+
+<div class="ctrl">
+  <label>Strip width&nbsp;
+    <input type="range" id="sw" min="1" max="5" value="2" step="1" style="width:90px">
+    <span id="swv">0.50 m</span>
+  </label>
+  <label>Lawn width&nbsp;
+    <input type="range" id="lw" min="3" max="9" value="6" step="1" style="width:90px">
+    <span id="lwv">6 m</span>
+  </label>
+  <label>Lawn height&nbsp;
+    <input type="range" id="lh" min="3" max="8" value="5" step="1" style="width:90px">
+    <span id="lhv">5 m</span>
+  </label>
+  <button id="btn">▶ Animate</button>
+</div>
+
+<canvas id="c" style="width:100%;border-radius:8px;border:0.5px solid var(--color-border-tertiary)"></canvas>
+<div id="info"></div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+const PAD = 52, ROBOT_R = 8;
+let stripW = 0.5, lawnW = 6, lawnH = 5;
+let animId = null, animFrame = 0, animTotal = 0, animWps = [];
+let isDark = matchMedia('(prefers-color-scheme:dark)').matches;
+
+function colors() {
+  return {
+    lawn:    isDark ? '#1c2a1c' : '#e8f5e0',
+    grass:   isDark ? '#2a3d2a' : '#d2ebb8',
+    strip:   isDark ? '#2e4a2e' : '#b8e090',
+    path:    isDark ? '#5ba85b' : '#2e7d32',
+    future:  isDark ? '#3d3d3a' : '#c8c6bc',
+    robot:   isDark ? '#ffb347' : '#e65100',
+    wp:      isDark ? '#8bc34a' : '#388e3c',
+    wpDone:  isDark ? '#555' : '#ccc',
+    text:    isDark ? '#c2c0b6' : '#3d3d3a',
+    border:  isDark ? '#4a4a42' : '#9e9d8a',
+    start:   isDark ? '#64b5f6' : '#1565c0',
+  };
+}
+
+function buildWaypoints() {
+  const wps = [];
+  let y = 0, ltr = true, strip = 0;
+  while (y <= lawnH + 0.001) {
+    wps.push({ x: ltr ? 0 : lawnW, y, dir: ltr, strip, type: 'start' });
+    wps.push({ x: ltr ? lawnW : 0, y, dir: ltr, strip, type: 'end' });
+    y = parseFloat((y + stripW).toFixed(4));
+    ltr = !ltr;
+    strip++;
+  }
+  return wps;
+}
+
+function resize() {
+  const w = canvas.parentElement.clientWidth;
+  canvas.width = w;
+  const aspect = (lawnH + 2) / (lawnW + 2);
+  canvas.height = Math.max(180, w * aspect * 0.7 + PAD);
+}
+
+function toCanvas(mx, my) {
+  const cw = canvas.width, ch = canvas.height;
+  const scaleX = (cw - PAD * 2) / lawnW;
+  const scaleY = (ch - PAD * 2) / lawnH;
+  const scale = Math.min(scaleX, scaleY);
+  const offX = (cw - lawnW * scale) / 2;
+  const offY = (ch - lawnH * scale) / 2;
+  return [offX + mx * scale, offY + (lawnH - my) * scale, scale];
+}
+
+function draw(frame) {
+  const C = colors();
+  const wps = buildWaypoints();
+  const cw = canvas.width, ch = canvas.height;
+  ctx.clearRect(0, 0, cw, ch);
+
+  const [ox, oy, scale] = toCanvas(0, 0);
+  const [ex, ey] = toCanvas(lawnW, lawnH).slice(0, 2);
+
+  // Lawn background
+  ctx.fillStyle = C.lawn;
+  ctx.beginPath();
+  ctx.roundRect(ox, ey, ex - ox, oy - ey, 6);
+  ctx.fill();
+  ctx.strokeStyle = C.border;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Shaded strips (alternating)
+  for (let s = 0; s < wps.length / 2; s++) {
+    const wp = wps[s * 2];
+    const [sx, sy1] = toCanvas(0, wp.y);
+    const [, sy2] = toCanvas(0, Math.min(wp.y + stripW, lawnH));
+    if (s % 2 === 0) {
+      ctx.fillStyle = C.grass;
+      ctx.fillRect(ox, Math.min(sy1, sy2), ex - ox, Math.abs(sy1 - sy2));
+    }
+  }
+
+  // Completed strip highlight
+  const doneStrip = frame > 0 ? Math.floor((frame - 1) / 2) : -1;
+  for (let s = 0; s <= doneStrip && s < wps.length / 2; s++) {
+    const wp = wps[s * 2];
+    const [, sy1] = toCanvas(0, wp.y);
+    const [, sy2] = toCanvas(0, Math.min(wp.y + stripW, lawnH));
+    ctx.fillStyle = C.strip;
+    ctx.fillRect(ox, Math.min(sy1, sy2), ex - ox, Math.abs(sy1 - sy2));
+  }
+
+  // Draw path lines
+  for (let i = 1; i < Math.min(frame + 1, wps.length); i++) {
+    const a = wps[i - 1], b = wps[i];
+    const [ax, ay] = toCanvas(a.x, a.y);
+    const [bx, by] = toCanvas(b.x, b.y);
+    ctx.strokeStyle = C.path;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+  }
+
+  // Future path (dashed, dim)
+  if (frame < wps.length - 1) {
+    ctx.strokeStyle = C.future;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    for (let i = Math.max(1, frame + 1); i < wps.length; i++) {
+      const a = wps[i - 1], b = wps[i];
+      const [ax, ay] = toCanvas(a.x, a.y);
+      const [bx, by] = toCanvas(b.x, b.y);
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+
+  // Waypoint dots
+  wps.forEach((wp, i) => {
+    const [px, py] = toCanvas(wp.x, wp.y);
+    ctx.beginPath();
+    ctx.arc(px, py, 4, 0, Math.PI * 2);
+    ctx.fillStyle = i < frame ? C.wp : C.wpDone;
+    ctx.fill();
+  });
+
+  // Start marker
+  const [sx0, sy0] = toCanvas(0, 0);
+  ctx.beginPath();
+  ctx.arc(sx0, sy0, 6, 0, Math.PI * 2);
+  ctx.fillStyle = C.start;
+  ctx.fill();
+
+  // Robot position
+  if (frame > 0 && frame <= wps.length) {
+    const cur = wps[Math.min(frame, wps.length - 1)];
+    const [rx, ry] = toCanvas(cur.x, cur.y);
+    // Robot body
+    ctx.beginPath();
+    ctx.arc(rx, ry, ROBOT_R, 0, Math.PI * 2);
+    ctx.fillStyle = C.robot;
+    ctx.fill();
+    ctx.strokeStyle = isDark ? '#fff3' : '#0003';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Direction indicator
+    const angle = cur.dir ? 0 : Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(rx, ry);
+    ctx.lineTo(rx + Math.cos(angle) * ROBOT_R * 1.4, ry + Math.sin(angle) * ROBOT_R * 1.4);
+    ctx.strokeStyle = isDark ? '#fff8' : '#0006';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Axis labels (metres)
+  ctx.fillStyle = C.text;
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'center';
+  for (let x = 0; x <= lawnW; x += Math.ceil(lawnW / 4)) {
+    const [px] = toCanvas(x, 0);
+    ctx.fillText(x + 'm', px, oy + 16);
+  }
+  ctx.textAlign = 'right';
+  for (let y = 0; y <= lawnH; y += Math.ceil(lawnH / 4)) {
+    const [, py] = toCanvas(0, y);
+    ctx.fillText(y + 'm', ox - 6, py + 4);
+  }
+
+  // Legend
+  ctx.textAlign = 'left';
+  const lx = ox, ly = ey - 18;
+  ctx.fillStyle = C.start;
+  ctx.beginPath(); ctx.arc(lx + 5, ly, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = C.text;
+  ctx.fillText('Start', lx + 14, ly + 4);
+
+  ctx.fillStyle = C.strip;
+  ctx.fillRect(lx + 65, ly - 5, 10, 10);
+  ctx.fillStyle = C.text;
+  ctx.fillText('Mowed', lx + 79, ly + 4);
+
+  ctx.strokeStyle = C.future;
+  ctx.setLineDash([3, 3]);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(lx + 140, ly); ctx.lineTo(lx + 155, ly);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = C.text;
+  ctx.fillText('To do', lx + 159, ly + 4);
+
+  // Info
+  const totalStrips = wps.length / 2;
+  const doneStrips = Math.floor(frame / 2);
+  document.getElementById('info').textContent =
+    `${totalStrips} strips × ${stripW.toFixed(2)} m = ${(lawnW * lawnH).toFixed(1)} m²  |  ` +
+    (frame === 0 ? 'Press ▶ Animate to start' :
+     frame >= wps.length ? `Complete — ${wps.length} waypoints visited` :
+     `Waypoint ${frame}/${wps.length - 1}  (strip ${doneStrips}/${totalStrips})`);
+}
+
+function animate() {
+  const wps = buildWaypoints();
+  if (animFrame >= wps.length) {
+    document.getElementById('btn').textContent = '▶ Replay';
+    draw(animFrame);
+    animId = null;
+    return;
+  }
+  draw(animFrame);
+  animFrame++;
+  const delay = animFrame % 2 === 1 ? 80 : 220;
+  animId = setTimeout(animate, delay);
+}
+
+function startAnimate() {
+  if (animId) { clearTimeout(animId); animId = null; }
+  animFrame = 0;
+  document.getElementById('btn').textContent = '⏸ Running…';
+  animate();
+}
+
+function redraw() {
+  if (animId) { clearTimeout(animId); animId = null; }
+  animFrame = 0;
+  resize();
+  draw(0);
+  document.getElementById('btn').textContent = '▶ Animate';
+}
+
+document.getElementById('btn').onclick = startAnimate;
+
+document.getElementById('sw').oninput = function() {
+  const vals = [0.25, 0.35, 0.5, 0.65, 0.8];
+  stripW = vals[this.value - 1];
+  document.getElementById('swv').textContent = stripW.toFixed(2) + ' m';
+  redraw();
+};
+document.getElementById('lw').oninput = function() {
+  lawnW = +this.value;
+  document.getElementById('lwv').textContent = lawnW + ' m';
+  redraw();
+};
+document.getElementById('lh').oninput = function() {
+  lawnH = +this.value;
+  document.getElementById('lhv').textContent = lawnH + ' m';
+  redraw();
+};
+
+window.addEventListener('resize', redraw);
+resize();
+draw(0);
+</script>
