@@ -1,0 +1,483 @@
+══════════════════════════════════════════
+PART 1: WHAT TO DOWNLOAD ON YOUR COMPUTER
+══════════════════════════════════════════ 
+Download these 3 things on your laptop/PC:
+ 
+1. Ubuntu Server 24.04 LTS for Raspberry Pi
+──────────────────────────────────────────
+   URL: https://ubuntu.com/download/raspberry-pi
+   
+   Click: "Ubuntu Server 24.04.1 LTS"
+   File: ubuntu-24.04.1-preinstalled-server-arm64+raspi.img.xz
+   Size: ~1.2 GB
+   
+   OR use this direct link:
+   https://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04.1-preinstalled-server-arm64+raspi.img.xz
+ 
+2. Raspberry Pi Imager
+──────────────────────────────────────────
+   URL: https://www.raspberrypi.com/software/
+   
+   Download for your OS:
+   - Windows: Raspberry Pi Imager for Windows
+   - Mac: Raspberry Pi Imager for macOS
+   - Linux: sudo apt install rpi-imager
+ 
+3. VNC Viewer (for remote desktop)   ──────────────────────────────────────────
+   URL: https://www.realvnc.com/en/connect/download/viewer/
+   
+   Download for your OS:
+   - Windows: VNC Viewer for Windows
+   - Mac: VNC Viewer for macOS
+   - Linux: VNC Viewer for Linux
+ 
+══════════════════════════════════════════
+PART 2: FLASH THE SD CARD
+══════════════════════════════════════════
+ 
+STEP 1: Insert new SD card (minimum 32GB, recommended 64GB+)
+──────────────────────────────────────────
+ 
+STEP 2: Open Raspberry Pi Imager
+──────────────────────────────────────────
+ 
+STEP 3: Configure the image
+──────────────────────────────────────────
+1. Click "Choose Device" → Select your Raspberry Pi model (Pi 4 or Pi 5)
+ 
+2. Click "Choose OS" → Scroll down → "Use custom"
+   → Select the ubuntu-24.04.1-preinstalled-server-arm64+raspi.img.xz file
+ 
+3. Click "Choose Storage" → Select your SD card
+ 
+4. Click "Next" → Click "Edit Settings"
+ 
+   In the settings window:
+   ┌─────────────────────────────────────────────────────────┐
+   │ [General Tab]                                           │
+   │                                                         │
+   │ ☑ Set hostname: raspberrypi  (or whatever you want)    │
+   │ ☑ Set username and password:                           │
+   │    Username: psb  (or your preferred username)          │
+   │    Password: [choose a strong password]                 │
+   │ ☑ Configure wireless LAN:                              │
+   │    SSID: [your WiFi name]                               │
+   │    Password: [your WiFi password]                       │
+   │    Country: SG                                          │
+   │ ☑ Set locale settings:                                 │
+   │    Time zone: Asia/Singapore                            │
+   │    Keyboard layout: us                                  │
+   │                                                         │
+   │ [Services Tab]                                          │
+   │                                                         │
+   │ ☑ Enable SSH                                           │
+   │    ○ Use password authentication                        │
+   │                                                         │
+   └─────────────────────────────────────────────────────────┘
+ 
+5. Click "Save" → Click "Yes" to apply settings
+ 
+6. Click "Yes" to confirm you want to erase the SD card
+ 
+7. Wait for flashing to complete (~10-15 minutes)
+ 
+8. Click "Continue" when done
+ 
+STEP 4: Boot the Raspberry Pi
+───────────────────────────────────
+1. Insert SD card into Raspberry Pi
+2. Connect power cable
+3. Wait 2-3 minutes for first boot
+4. The Pi should connect to your WiFi automatically
+ 
+═══════════════════════════════════
+PART 3: CONNECT TO RASPBERRY PI VIA SSH
+═══════════════════════════════════
+ 
+STEP 1: Find the Pi's IP address
+───────────────────────────────────
+Option A: Check your router's admin page for connected devices
+ 
+Option B: Use hostname (if on same network):
+  ping raspberrypi.local
+ 
+Option C: Scan your network:
+  Windows: Download "Advanced IP Scanner"
+  Mac/Linux: nmap -sn 192.168.1.0/24  (adjust to your network)
+ 
+STEP 2: SSH into the Pi
+───────────────────────────────────
+Windows:
+  - Open PowerShell or CMD
+  - ssh psb@raspberrypi.local
+    (or ssh psb@[IP_ADDRESS])
+ 
+Mac/Linux:
+  - Open Terminal
+  - ssh psb@raspberrypi.local
+    (or ssh psb@[IP_ADDRESS])
+ 
+First time: Type "yes" to accept fingerprint
+Password: [your password from Step 3]
+
+════════════════════════════
+PART 4: INITIAL SYSTEM SETUP (via SSH)
+════════════════════════════
+Run these commands one by one:
+
+# Update system
+────────────────────────────
+sudo apt update
+sudo apt upgrade -y
+# This takes 10-20 minutes
+
+# Install essential tools
+────────────────────────────
+sudo apt install -y build-essential git curl wget nano vim
+
+# Install Python and pip
+────────────────────────────
+sudo apt install -y python3 python3-pip python3-dev python3-venv
+
+# Install GPIO libraries for motor control
+────────────────────────────
+sudo apt install -y python3-rpi.gpio python3-lgpio
+pip3 install RPi.GPIO --break-system-packages
+
+════════════════════════════
+PART 5: INSTALL DESKTOP ENVIRONMENT (XFCE)
+════════════════════════════
+
+# Install XFCE (lightweight desktop)
+────────────────────────────
+sudo apt install -y xfce4 xfce4-goodies
+# This takes 15-20 minutes
+
+# Install display manager
+────────────────────────────
+sudo apt install -y lightdm
+
+# Set to boot to desktop
+────────────────────────────
+sudo systemctl set-default graphical.target
+
+# Reboot to apply
+────────────────────────────
+sudo reboot
+
+Wait 1-2 minutes, then SSH back in.
+
+════════════════════════════
+PART 6: INSTALL AND CONFIGURE VNC SERVER
+════════════════════════════
+
+# Install TigerVNC server
+────────────────────────────
+sudo apt install -y tigervnc-standalone-server tigervnc-common
+
+# Set VNC password
+────────────────────────────
+vncpasswd
+# Enter password (8 chars)
+# View-only password: n
+
+# Create VNC config
+────────────────────────────
+mkdir -p ~/.vnc
+cat > ~/.vnc/xstartup << 'EOF'
+#!/bin/sh
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+exec startxfce4
+EOF
+
+chmod +x ~/.vnc/xstartup
+
+# Create VNC service
+────────────────────────────
+sudo tee /etc/systemd/system/vncserver@.service > /dev/null << 'EOF'
+[Unit]
+Description=Remote desktop service (VNC)
+After=syslog.target network.target
+
+[Service]
+Type=forking
+User=psb
+PIDFile=/home/psb/.vnc/%H:%i.pid
+ExecStartPre=/bin/sh -c '/usr/bin/vncserver -kill :%i > /dev/null 2>&1 || :'
+ExecStart=/usr/bin/vncserver :%i -geometry 1920x1080 -depth 24 -localhost no
+ExecStop=/usr/bin/vncserver -kill :%i
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Enable and start VNC
+────────────────────────────
+sudo systemctl daemon-reload
+sudo systemctl enable vncserver@1.service
+sudo systemctl start vncserver@1.service
+
+# Check VNC is running
+────────────────────────────
+sudo systemctl status vncserver@1.service
+# Should show "active (running)"
+ctrl + c to quit
+
+# Check if it's running
+────────────────────────────
+ss -tlnp | grep 5901
+
+# Force kill the leftover process
+kill -9 (pid) # < check urself [users:(("Xtigervnc",pid=2433,fd=8))]
+
+# Clean up leftover lock files
+rm -f /tmp/.X1-lock
+rm -f /tmp/.X11-unix/X1
+
+# Now start the service
+sudo systemctl start vncserver@1.service
+sudo systemctl status vncserver@1.service
+
+# Install the missing dbus-x11 package:
+sudo apt install -y dbus-x11
+
+# Then restart VNC:
+sudo systemctl restart vncserver@1.service
+────────────────────────────
+psb@psb:~$ sudo systemctl status vncserver@1.service
+● vncserver@1.service - Remote desktop service (VNC)
+     Loaded: loaded (/etc/systemd/system/vncserver@.service; enabled; preset: e>
+     Active: active (running) since Mon 2026-03-09 00:12:08 +08; 11s ago
+    Process: 1690 ExecStartPre=/bin/sh -c /usr/bin/vncserver -kill :1 > /dev/nu>
+    Process: 1695 ExecStart=/usr/bin/vncserver :1 -geometry 1920x1080 -depth 24>
+   Main PID: 1702 (Xtigervnc)
+      Tasks: 202 (limit: 3850)
+     Memory: 353.4M (peak: 354.0M)
+        CPU: 18.594s
+     CGroup: /system.slice/system-vncserver.slice/vncserver@1.service
+             ├─1701 /usr/bin/perl /usr/bin/vncserver :1 -geometry 1920x1080 -de>
+             ├─1702 /usr/bin/Xtigervnc :1 -localhost=0 -desktop "psb:1 (psb)" ->
+             ├─1703 xfce4-session
+             ├─1717 /usr/bin/dbus-launch --sh-syntax --exit-with-session xfce4->
+             ├─1718 /usr/bin/dbus-daemon --syslog --fork --print-pid 5 --print->
+             ├─1720 /usr/libexec/at-spi-bus-launcher
+             ├─1726 /usr/bin/dbus-daemon --config-file=/usr/share/defaults/at-s>
+             ├─1731 /usr/lib/aarch64-linux-gnu/xfce4/xfconf/xfconfd
+             ├─1738 /usr/libexec/at-spi2-registryd --use-gnome-session
+             ├─1745 /usr/bin/ssh-agent -s
+             ├─1757 xfwm4
+             ├─1762 /usr/libexec/gvfsd
+             ├─1779 xfsettingsd
+────────────────────────────
+
+════════════════════════════
+PART 7: CONNECT VIA VNC VIEWER
+════════════════════════════
+
+1. Open VNC Viewer on your laptop
+
+2. Enter address: raspberrypi.local:5901
+   (or [IP_ADDRESS]:5901)
+
+3. Click Connect
+
+4. Enter VNC password (the one you set with vncpasswd)
+
+5. You should see the XFCE desktop!
+
+════════════════════════════
+PART 8: INSTALL ROS2 KILTED
+════════════════════════════
+
+Open terminal in VNC (or via SSH):
+
+# Add ROS2 repository
+────────────────────────────
+sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+
+# Update package list
+────────────────────────────
+sudo apt update
+
+# Install ROS2 Kilted (full desktop version)
+────────────────────────────
+sudo apt install -y ros-kilted-desktop
+# This takes 20-30 minutes
+
+# Install ROS2 development tools
+────────────────────────────
+sudo apt install -y ros-dev-tools
+sudo apt install -y python3-colcon-common-extensions
+
+# Source ROS2 in bashrc
+────────────────────────────
+echo "source /opt/ros/kilted/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+
+# Verify installation
+────────────────────────────
+ros2 --help
+# or check the version this way:
+ros2 doctor
+
+# Initialize rosdep (if not done yet)
+sudo rosdep init
+rosdep update
+
+# Test ROS2 is working
+source /opt/ros/kilted/setup.bash
+ros2 run demo_nodes_cpp talker
+
+source /opt/ros/kilted/setup.bash
+ros2 run demo_nodes_py listener
+
+════════════════════════════
+PART 9: INSTALL REQUIRED ROS2 PACKAGES
+════════════════════════════
+
+# Navigation stack
+────────────────────────────
+sudo apt install -y \
+  ros-kilted-navigation2 \
+  ros-kilted-nav2-bringup \
+  ros-kilted-slam-toolbox \
+  ros-kilted-teleop-twist-keyboard
+
+# RViz and visualization
+────────────────────────────
+sudo apt install -y ros-kilted-rviz2
+
+# TF2 tools
+────────────────────────────
+sudo apt install -y ros-kilted-tf2-tools ros-kilted-tf-transformations
+
+# Additional utilities
+────────────────────────────
+sudo apt install -y xterm  # for teleop popup window
+
+════════════════════════════
+PART 10: INSTALL RPLIDAR DRIVER
+════════════════════════════
+
+# Create workspace
+────────────────────────────
+mkdir -p ~/ws_lidar/src
+cd ~/ws_lidar/src
+
+# Clone RPLidar ROS2 driver
+────────────────────────────
+git clone https://github.com/Slamtec/sllidar_ros2.git
+
+# Build workspace
+────────────────────────────
+cd ~/ws_lidar
+colcon build --symlink-install
+# Takes 2-5 minutes
+
+----------------------------if stuck
+# 1. Clean partial build
+cd ~/ws_lidar
+rm -rf build/ install/ log/
+
+# 2. Add swap
+sudo swapoff -a
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+# 3. Rebuild slowly with 1 worker
+colcon build --symlink-install --parallel-workers 1
+
+# 4. Source when done
+------------------------------
+
+echo "source ~/ws_lidar/install/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+
+════════════════════════════
+PART 11: SETUP RPLIDAR UDEV RULES
+════════════════════════════
+
+# Create udev rule for RPLidar
+────────────────────────────
+echo 'KERNEL=="ttyUSB*", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", MODE:="0777", SYMLINK+="rplidar"' | sudo tee /etc/udev/rules.d/rplidar.rules
+
+# Reload udev rules
+────────────────────────────
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
+# Add user to dialout group
+────────────────────────────
+sudo usermod -a -G dialout $USER
+sudo usermod -a -G tty $USER
+
+# Logout and login for group changes to take effect
+────────────────────────────
+# Restart VNC service instead of full logout
+sudo systemctl restart vncserver@1.service
+
+
+groups
+# reconnect your VNC client should show: dialout tty in the list
+
+# plug in your RPLIDAR and check detected
+ls -la /dev/rplidar
+# Should show the symlink to ttyUSB0
+
+--------------------------------
+GPIO
+# 1. Add yourself to gpio group
+sudo usermod -a -G gpio $USER
+
+# 2. Fix GPIO permissions
+sudo chmod 666 /dev/gpiomem 2>/dev/null
+sudo chmod 666 /dev/mem 2>/dev/null
+
+# 3. Create udev rule for GPIO
+echo 'SUBSYSTEM=="gpio", GROUP="gpio", MODE="0660"' | sudo tee /etc/udev/rules.d/99-gpio.rules
+echo 'SUBSYSTEM=="gpiomem", GROUP="gpio", MODE="0660"' | sudo tee -a /etc/udev/rules.d/99-gpio.rules
+
+# 4. Reload udev
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
+# 5. LOGOUT AND LOGIN AGAIN (group changes require this!)
+exit
+
+# Check you're in gpio group
+groups
+# Should show: psb dialout tty gpio
+
+════════════════════════════
+
+--------
+Part 11
+--------
+# Upload all .sh files first
+just create document and copy and paste in pi directory
+
+#run setup
+bash ~/robot_setup_full.sh
+source ~/.bashrc
+
+### if want to remove everything ###
+bash ~/robot_undo.sh
+
+# if not then continue this
+bash ~/robot_fix.sh
+source ~/.bashrc
+
+bash ~/robot_hotfix.sh
+source ~/.bashrc
+
+bash ~/robot_hotfix2.sh # ignore the 1 check(s) failed
+source ~/.bashrc
+
+bash ~/robot_hotfix3.sh
+source ~/.bashrc
